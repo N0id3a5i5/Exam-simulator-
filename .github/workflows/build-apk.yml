@@ -41,6 +41,12 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
+      - name: Patch AndroidManifest for internet access
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <application android:usesCleartextTraffic="true"|' $MANIFEST
+          cat $MANIFEST
+
       - name: Set Gradle permissions
         run: chmod +x android/gradlew
 
@@ -55,4 +61,3 @@ jobs:
           name: MCQ-Exam-Simulator
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
-          
