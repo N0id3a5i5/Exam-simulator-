@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI } from '@google/genai';
 import html2pdf from 'html2pdf.js';
-import { FileText, Home, Download, Loader2, CheckCircle, XCircle, Clock, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
+import { 
+  FileText, Home, Download, Loader2, CheckCircle, 
+  XCircle, Clock, BookOpen, ChevronLeft, ChevronRight, Eye, EyeOff 
+} from 'lucide-react';
 
+// --- Types & Interfaces ---
 interface Question {
   id: number;
   question: string;
@@ -12,29 +15,580 @@ interface Question {
 
 type Screen = 'upload' | 'test' | 'results';
 
-// ── Inject global styles ──────────────────────────────────────────────────────
+// --- Global Styles ---
 const GLOBAL_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=JetBrains+Mono&display=swap');
 
-  :root {
-    --bg:       #07090f;
-    --surface:  #0e1220;
-    --card:     #141828;
-    --border:   #1e2640;
-    --gold:     #f5b945;
-    --gold2:    #e8a020;
-    --blue:     #3b6cf7;
-    --green:    #2ecc71;
-    --red:      #e74c3c;
-    --text:     #e8eaf6;
-    --muted:    #6b7394;
-    --radius:   16px;
-  }
+:root {
+  --bg: #07090f;
+  --surface: #0e1220;
+  --card: #141828;
+  --border: #1e2640;
+  --gold: #f5b945;
+  --gold2: #e8a020;
+  --blue: #3b6cf7;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --text: #e8eaf6;
+  --muted: #667394;
+  --radius: 16px;
+}
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-  body {
-    background: var(--bg);
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Sora', sans-serif;
+  min-height: 100vh;
+}
+
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,185,69,0.4); }
+  50% { box-shadow: 0 0 0 10px rgba(245,185,69,0); }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.upload-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 48px 40px;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+  animation: fadeUp 0.6s cubic-bezier(.16,1,.3,1) forwards;
+}
+
+.upload-icon-wrap {
+  width: 80px; height: 80px;
+  background: linear-gradient(135deg, rgba(245,185,69,0.15), rgba(59,108,247,0.15));
+  border: 1px solid rgba(245,185,69,0.2);
+  border-radius: 20px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px;
+}
+
+.file-input-wrapper {
+  position: relative;
+  background: var(--surface);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: pointer;
+  margin-bottom: 24px;
+}
+
+.file-input-wrapper:hover {
+  border-color: var(--gold);
+  background: rgba(245,185,69,0.04);
+}
+
+.file-input-wrapper input {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+
+.btn-primary {
+  width: 100%;
+  background: linear-gradient(135deg, var(--gold), var(--gold2));
+  color: #07090f;
+  font-weight: 800;
+  font-size: 15px;
+  border: none;
+  border-radius: var(--radius);
+  padding: 18px;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+  letter-spacing: 0.3px;
+  animation: pulse-gold 2.5s infinite;
+}
+
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-primary:active { transform: scale(0.97); animation: none; }
+
+.log-console {
+  background: #050709;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  height: 160px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: left;
+}
+
+.test-layout {
+  display: flex;
+  gap: 20px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  animation: fadeIn 0.4s ease;
+}
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.timer-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 16px;
+  text-align: center;
+}
+
+.timer-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 2px;
+}
+
+.timer-value.urgent { color: var(--red); animation: fadeIn 0.3s ease infinite; }
+
+.progress-sidebar {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.progress-bar-track {
+  background: var(--surface);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--blue), var(--gold));
+  transition: width 0.5s cubic-bezier(.16,1,.3,1);
+}
+
+.progress-answered-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--green), #27ae60);
+  transition: width 0.5s cubic-bezier(.16,1,.3,1);
+}
+
+.q-card {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 32px 28px;
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+}
+
+.option-btn {
+  width: 100%;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s;
+  text-align: left;
+  margin-bottom: 10px;
+}
+
+.option-btn:hover { border-color: var(--gold); background: rgba(245,185,69,0.04); }
+.option-btn.selected { border-color: var(--gold); background: rgba(245,185,69,0.1); }
+
+.option-key {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 13px;
+  flex-shrink: 0;
+  background: var(--card);
+  color: var(--muted);
+}
+
+.option-btn.selected .option-key { background: var(--gold); color: var(--bg); }
+
+.results-wrap { max-width: 840px; margin: 0 auto; padding: 24px 16px; }
+
+.score-hero {
+  background: linear-gradient(135deg, var(--card) 0%, #230f15 100%);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 40px 32px;
+  text-align: center;
+  margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.score-pct {
+  font-size: 72px; font-weight: 800;
+  background: linear-gradient(135deg, var(--gold), #fff8e1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1; margin-bottom: 8px;
+}
+
+.ai-explain-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 12px; width: 100%;
+  background: rgba(59,108,247,0.1); border: 1px solid rgba(59,108,247,0.25);
+  color: #7b9ef7; font-family: 'Sora', sans-serif;
+  font-weight: 700; font-size: 12px;
+  padding: 9px 14px; border-radius: 8px;
+  cursor: pointer; transition: background 0.2s;
+}
+
+.ai-explanation-box {
+  margin-top: 12px;
+  background: rgba(245,185,69,0.06); border: 1px solid rgba(245,185,69,0.2);
+  border-radius: 10px; padding: 12px 14px;
+  font-size: 13px; line-height: 1.7; color: var(--text);
+  animation: fadeUp 0.4s ease;
+}
+
+.loading-wrap { text-align: center; max-width: 400px; width: 100%; animation: fadeIn 0.5s ease; }
+
+.spinner {
+  width: 48px; height: 48px;
+  border: 3px solid var(--border);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  margin: 0 auto 20px;
+  animation: spin 0.8s linear infinite;
+}
+
+.shimmer-text {
+  background: linear-gradient(90deg, var(--muted), var(--gold), var(--muted));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2s linear infinite;
+  font-weight: 700; font-size: 16px;
+}
+
+@media (max-width: 700px) {
+  .test-layout { flex-direction: column; }
+  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; }
+}
+`;
+
+function injectStyles() {
+  if (document.getElementById('app-styles')) return;
+  const el = document.createElement('style');
+  el.id = 'app-styles';
+  el.textContent = GLOBAL_CSS;
+  document.head.appendChild(el);
+}
+
+// --- Main App Component ---
+export default function App() {
+  useEffect(() => { injectStyles(); }, []);
+
+  const [screen, setScreen] = useState<Screen>('upload');
+  const [loading, setLoading] = useState(false);
+  const [logs, setLogs] = useState<string[]>(['> System initialized...']);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [selections, setSelections] = useState<Record<number, string>>({});
+  const [qIndex, setQIndex] = useState(0);
+  const [clock, setClock] = useState(7200);
+  const [file, setFile] = useState<File | null>(null);
+  const [fileName, setFileName] = useState('');
+  const [animKey, setAnimKey] = useState(0);
+  const [discoveredModel, setDiscoveredModel] = useState<string>('');
+  const [apiKey, setApiKey] = useState<string>(() => {
+    try { return localStorage.getItem('gemini_api_key') || ''; }
+    catch { return ''; }
+  });
+  const [showKey, setShowKey] = useState(false);
+  const [aiExplanations, setAiExplanations] = useState<Record<number, string>>({});
+  const [loadingExplanation, setLoadingExplanation] = useState<Record<number, boolean>>({});
+
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
+
+  useEffect(() => {
+    let interval: any;
+    if (screen === 'test' && clock > 0) {
+      interval = setInterval(() => {
+        setClock(c => {
+          if (c <= 1) {
+            clearInterval(interval);
+            setScreen('results');
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [screen, clock]);
+
+  useEffect(() => { setAnimKey(k => k + 1); }, [qIndex]);
+
+  const addLog = (msg: string, isError = false) => {
+    setLogs(prev => [...prev, `<span style="color:${isError ? '#e74c3c' : '#2ecc71'}">${msg}</span>`]);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFile(e.target.files[0]);
+      setFileName(e.target.files[0].name);
+    }
+  };
+
+  const startExtraction = async () => {
+    if (!file) { alert('Please select a PDF first!'); return; }
+    const key = apiKey.trim();
+    if (!key) { alert('Please enter your Gemini API key first!'); return; }
+    
+    try { localStorage.setItem('gemini_api_key', key); } catch {}
+    setLoading(true);
+    addLog('Checking key permissions...');
+
+    try {
+      addLog('Scanning available Gemini models...');
+      const mRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+      const mData = await mRes.json();
+      if (mData.error) throw new Error(mData.error.message);
+
+      const supportedModels: string[] = mData.models
+        .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+        .map((m: any) => m.name);
+
+      const bestModel = supportedModels.find(n => n.includes('gemini-2.0-flash')) ||
+                        supportedModels.find(n => n.includes('1.5-pro')) ||
+                        supportedModels.find(n => n.includes('1.5-flash')) ||
+                        supportedModels[0];
+
+      if (!bestModel) throw new Error('No compatible Gemini model found');
+      const modelShortName = bestModel.split('/').pop() || bestModel;
+      setDiscoveredModel(modelShortName);
+      addLog(`Engine discovered: ${modelShortName}`);
+
+      addLog('Reading PDF contents...');
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+      });
+
+      addLog('Extracting MCQs (10-30s)...');
+      const prompt = `Read this PDF. Extract ALL MCQ questions. Return ONLY a raw JSON array. 
+      Example: [{"id":1,"question":"full question text", "options":{"A": "option a", "B": "option b"}, "answer": "A"}]. 
+      Ensure every question has all options and the correct answer letter.`;
+
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${bestModel}:generateContent?key=${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: 'application/pdf', data: base64 } }
+            ]
+          }]
+        })
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+
+      let raw = data.candidates[0].content.parts[0].text;
+      raw = raw.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(raw) as Question[];
+
+      if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('No questions found');
+      setQuestions(parsed);
+      addLog(`Found ${parsed.length} questions! Starting exam...`);
+      setTimeout(() => { setScreen('test'); setLoading(false); }, 800);
+
+    } catch (err: any) {
+      addLog(`CRITICAL ERROR: ${err.message}`, true);
+      alert('Processing failed. Check the log for details.');
+      setLoading(false);
+    }
+  };
+
+  const endExam = () => setScreen('results');
+
+  const fetchExplanation = async (q: Question) => {
+    setLoadingExplanation(prev => ({ ...prev, [q.id]: true }));
+    try {
+      const key = apiKey.trim();
+      const model = discoveredModel ? `models/${discoveredModel}` : 'models/gemini-1.5-flash';
+      const prompt = `Explain clearly why "${q.answer}" is the correct answer for:
+      Question: ${q.question}
+      Options: ${Object.entries(q.options).map(([k, v]) => `${k}. ${v}`).join(', ')}
+      Correct Answer: ${q.answer}. ${q.options[q.answer]}`;
+
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const explanation = data.candidates[0].content.parts[0].text;
+      setAiExplanations(prev => ({ ...prev, [q.id]: explanation }));
+    } catch (err: any) {
+      setAiExplanations(prev => ({ ...prev, [q.id]: `Error: ${err.message}` }));
+    } finally {
+      setLoadingExplanation(prev => ({ ...prev, [q.id]: false }));
+    }
+  };
+
+  const saveResults = () => {
+    if (resultsRef.current) {
+      html2pdf().from(resultsRef.current).set({
+        margin: 10,
+        filename: 'Exam-Report.pdf',
+        html2canvas: { scale: 2, backgroundColor: '#07090f' },
+        jsPDF: { orientation: 'portrait' }
+      }).save();
+    }
+  };
+
+  const formatTime = (s: number) => {
+    const h = Math.floor(s / 3600).toString().padStart(2, '0');
+    const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
+    const sec = (s % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${sec}`;
+  };
+
+  // --- Sub-Renders ---
+  const renderUploadScreen = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', padding: 20 }}>
+      {loading ? (
+        <div className="loading-wrap">
+          <div className="spinner" />
+          <p className="shimmer-text">Analyzing Document...</p>
+          <p style={{ color: 'var(--muted)', fontSize: 12, margin: '8px 0 16px' }}>This takes roughly 15-30 seconds</p>
+          <div className="log-console">
+            {logs.map((log, i) => <div key={i} dangerouslySetInnerHTML={{ __html: log }} />)}
+            <div ref={logsEndRef} />
+          </div>
+        </div>
+      ) : (
+        <div className="upload-card">
+          <div className="upload-icon-wrap"><BookOpen size={36} color="var(--gold)" /></div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, textAlign: 'center', marginBottom: 8 }}>PDF to MCQ Quiz</h1>
+          <p style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', marginBottom: 32 }}>Upload a PDF and let AI generate a mock test.</p>
+          
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>Gemini API Key</p>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input 
+                type={showKey ? 'text' : 'password'} 
+                value={apiKey} 
+                onChange={e => setApiKey(e.target.value)}
+                placeholder="Paste API key here (AIzaSy...)"
+                style={{ width: '100%', background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 10, padding: '12px 44px 12px 14px', color: 'var(--text)', fontSize: 13, fontFamily: 'JetBrains Mono, monospace' }}
+              />
+              <button onClick={() => setShowKey(!showKey)} style={{ position: 'absolute', right: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}>
+                {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="file-input-wrapper">
+            <input type="file" accept="application/pdf" onChange={handleFileChange} />
+            <div className="file-label">
+              <FileText size={24} color={fileName ? 'var(--gold)' : 'var(--muted)'} style={{ marginBottom: 8 }} />
+              <p style={{ fontSize: 13, fontWeight: 600, color: fileName ? 'var(--text)' : 'var(--muted)' }}>{fileName || 'Click to choose PDF'}</p>
+            </div>
+          </div>
+
+          <button className="btn-primary" onClick={startExtraction}>Start Extraction</button>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderTestScreen = () => {
+    if (questions.length === 0) return null;
+    const q = questions[qIndex];
+    const answered = Object.keys(selections).length;
+    const visitedPct = ((qIndex + 1) / questions.length) * 100;
+    const answeredPct = (answered / questions.length) * 100;
+    const isUrgent = clock < 300;
+
+    return (
+      <div className="test-layout">
+        <div className="sidebar">
+          <div className="timer-box">
+            <div className="timer-label" style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+              <Clock size={11} style={{ display: 'inline', marginRight: 4 }} /> Time Remaining
+            </div>
+            <div className={`timer-value ${isUrgent ? 'urgent' : ''}`}>{formatTime(clock)}</div>
+            {discoveredModel && (
+              <div style={{ marginTop: 8, fontSize: 10, color: 'var(--green)', background: 'rgba(46,204,113,0.08)', borderRadius: 6, padding: '3px 8px', fontFamily: 'JetBrains Mono, monospace' }}>
+                {discoveredModel}
+              </div>
+            )}
+          </div>
+          <div className="progress-sidebar">
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Visited: {qIndex + 1}/{questions.length}</div>
+            <div className="progress-bar-track"><div className="progress-bar-fill" style={{ width: `${visitedPct}%` }} /></div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4, marginTop: 12 }}>Answered: {answered}/{questions.length}</div>
+            <div className="progress-bar-track"><div className="progress-answered-fill" style={{ width: `${answeredPct}%` }} /></div>
+            <button className="end-btn" onClick={endExam} style={{ marginTop: 20, width: '100%', background: 'rgba(231,76,60,0.12)', color: 'var(--red)', border: '1px solid rgba(231,76,60,0.25)', borderRadius: 'var(--radius)', padding: 12, fontWeight: 700, cursor: 'pointer' }}>End Test</button>
+          </div>
+        </div>
+
+        <div className="q-card" key={animKey} style={{ animation: 'scaleIn 0.3s cubic-bezier(.16,1,.3,1) forwards' }}>
+          <div style={{ display: 'fl    background: var(--bg);
     color: var(--text);
     font-family: 'Sora', sans-serif;
     min-height: 100vh;
