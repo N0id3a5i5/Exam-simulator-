@@ -549,7 +549,7 @@ export default function App() {
       addLog('Extracting MCQs (10–30s)...');
       const prompt = `Read this PDF. Extract all MCQs. Format as RAW JSON array ONLY: [{"id":1,"question":"?","options":{"A":"x","B":"y"},"answer":"B"}]`;
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-1.5-flash',
         contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: 'application/pdf', data: base64 } }] }],
         config: { responseMimeType: 'application/json' }
       });
