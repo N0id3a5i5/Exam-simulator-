@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # fixes Node 20 deprecation warning
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -39,54 +39,69 @@ jobs:
       - name: Install Capacitor
         run: npm install @capacitor/core @capacitor/cli @capacitor/android
 
+      - name: Write capacitor.config.json with CapacitorHttp enabled
+        run: |
+          cat > capacitor.config.json << 'EOF'
+          {
+            "appId": "com.mcqexam.app",
+            "appName": "MCQ Exam Simulator",
+            "webDir": "dist",
+            "plugins": {
+              "CapacitorHttp": {
+                "enabled": true
+              }
+            },
+            "android": {
+              "allowMixedContent": true
+            }
+          }
+          EOF
+
       - name: Init & add Android platform
         run: |
           npx cap add android || true
           npx cap sync android
 
-      - name: Add network security config
+      - name: Write network security config
         run: |
           mkdir -p android/app/src/main/res/xml
-          cat > android/app/src/main/res/xml/network_security_config.xml << 'XML'
+          cat > android/app/src/main/res/xml/network_security_config.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <network-security-config>
-              <base-config cleartextTrafficPermitted="true">
-                  <trust-anchors>
-                      <certificates src="system" />
-                  </trust-anchors>
-              </base-config>
+            <base-config cleartextTrafficPermitted="true">
+              <trust-anchors>
+                <certificates src="system" />
+                <certificates src="user" />
+              </trust-anchors>
+            </base-config>
+            <domain-config cleartextTrafficPermitted="true">
+              <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
+              <domain includeSubdomains="true">api.groq.com</domain>
+            </domain-config>
           </network-security-config>
-          XML
+          EOF
 
-      - name: Patch AndroidManifest with Python
+      - name: Patch AndroidManifest
         run: |
           python3 << 'PYEOF'
-          import re
-
           path = "android/app/src/main/AndroidManifest.xml"
           with open(path, "r") as f:
               content = f.read()
-
-          # Add INTERNET permission if missing
           if "INTERNET" not in content:
               content = content.replace(
                   "<application",
                   '<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <application',
                   1
               )
-
-          # Add networkSecurityConfig if missing
           if "networkSecurityConfig" not in content:
               content = content.replace(
                   "<application",
                   '<application android:networkSecurityConfig="@xml/network_security_config" android:usesCleartextTraffic="true"',
                   1
               )
-
           with open(path, "w") as f:
               f.write(content)
-
-          print("Manifest patched successfully!")
+          print("Manifest patched!")
           print(open(path).read())
           PYEOF
 
@@ -102,3 +117,4 @@ jobs:
           name: MCQ-Exam-Simulator
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
+          
