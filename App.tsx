@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import html2pdf from 'html2pdf.js';
+import { PDFDocument } from 'pdf-lib';
 import {
   FileText, Download, CheckCircle, XCircle,
   Clock, BookOpen, ChevronLeft, ChevronRight, Eye, EyeOff,
@@ -30,11 +31,9 @@ const safeSet = (key: string, val: string): void => {
   try { localStorage.setItem(key, val); } catch { /* silently ignore */ }
 };
 
-// PRO FEATURE: Bulletproof JSON parsing to prevent crashes from Markdown/Text leakage
 const safeParseJSON = (text: string): Question[] | null => {
   try {
     const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    // Aggressively find array brackets in case AI adds conversational filler
     const startIdx = cleaned.indexOf('[');
     const endIdx = cleaned.lastIndexOf(']');
     
@@ -91,7 +90,6 @@ const GLOBAL_CSS = `
   @keyframes pulseGold { 0%,100% { box-shadow: 0 0 0 0 rgba(245,185,69,0.35); } 50% { box-shadow: 0 0 0 8px rgba(245,185,69,0); } }
   @keyframes urgentBlink { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
 
-  /* Upload & Components */
   .upload-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(59,108,247,0.07) 0%, transparent 70%), radial-gradient(ellipse 60% 40% at 80% 100%, rgba(245,185,69,0.05) 0%, transparent 60%); }
   .upload-card { background: var(--card); border: 1px solid var(--border2); border-radius: 24px; padding: 40px 36px 36px; width: 100%; max-width: 420px; box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.025) inset; animation: fadeUp 0.55s cubic-bezier(.16,1,.3,1) both; }
   .upload-logo { width: 70px; height: 70px; background: linear-gradient(135deg, var(--gold-dim), var(--blue-dim)); border: 1px solid rgba(245,185,69,0.18); border-radius: 18px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; box-shadow: 0 8px 28px rgba(245,185,69,0.08); }
@@ -118,7 +116,6 @@ const GLOBAL_CSS = `
   .btn-primary:active { transform: scale(0.98); animation: none; }
   .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; animation: none; transform: none; box-shadow: none; }
 
-  /* Loading & Error Box */
   .loading-wrap { text-align: center; max-width: 380px; width: 100%; animation: fadeUp 0.45s ease; }
   .spinner-ring { width: 52px; height: 52px; border: 3px solid var(--border2); border-top-color: var(--gold); border-radius: 50%; margin: 0 auto 18px; animation: spin 0.75s linear infinite; }
   .shimmer-text { background: linear-gradient(90deg, var(--muted), var(--gold), var(--text2), var(--gold), var(--muted)); background-size: 300% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: shimmer 2.2s linear infinite; font-weight: 700; font-size: 15px; margin-bottom: 5px; }
@@ -131,7 +128,6 @@ const GLOBAL_CSS = `
   .log-line { display: flex; align-items: flex-start; gap: 7px; }
   .log-line.ok { color: #2ecc71; } .log-line.err { color: #e74c3c; } .log-line.warn { color: #f5b945; } .log-line.info { color: #5a6280; }
 
-  /* Test Layout */
   .test-layout { display: flex; gap: 18px; max-width: 980px; margin: 0 auto; padding: 20px 16px; animation: fadeIn 0.35s ease; align-items: flex-start; }
   .sidebar { width: 210px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 20px; }
   .s-card { background: var(--card); border: 1px solid var(--border2); border-radius: var(--r); padding: 16px; }
@@ -150,7 +146,6 @@ const GLOBAL_CSS = `
   .end-btn { width: 100%; background: var(--red-dim); color: var(--red); border: 1px solid rgba(231,76,60,0.22); border-radius: var(--r); padding: 11px; font-family: 'Sora', sans-serif; font-weight: 700; font-size: 12.5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: background 0.2s, border-color 0.2s, transform 0.12s; }
   .end-btn:hover { background: rgba(231,76,60,0.2); border-color: rgba(231,76,60,0.45); transform: translateY(-1px); }
 
-  /* Question Card */
   .q-card { flex: 1; background: var(--card); border: 1px solid var(--border2); border-radius: var(--rlg); padding: 28px 26px; display: flex; flex-direction: column; min-height: 500px; animation: scaleIn 0.28s cubic-bezier(.16,1,.3,1); }
   .q-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
   .q-badge { background: var(--gold-dim); color: var(--gold); font-weight: 700; font-size: 12.5px; padding: 5px 11px; border-radius: 8px; border: 1px solid rgba(245,185,69,0.18); font-family: 'JetBrains Mono', monospace; }
@@ -171,7 +166,6 @@ const GLOBAL_CSS = `
   .nav-btn.nxt { background: linear-gradient(135deg, var(--gold), var(--gold2)); color: var(--bg); border-color: transparent; flex: 1; justify-content: center; }
   .nav-btn.nxt:hover { opacity: 0.9; transform: translateY(-1px); }
 
-  /* Results */
   .results-wrap { max-width: 860px; margin: 0 auto; padding: 22px 16px 40px; animation: fadeIn 0.4s ease; }
   .results-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
   .btn-ghost { display: flex; align-items: center; gap: 7px; background: var(--card); border: 1px solid var(--border2); color: var(--text2); font-family: 'Sora', sans-serif; font-weight: 700; font-size: 12.5px; padding: 10px 16px; border-radius: 9px; cursor: pointer; transition: background 0.18s, color 0.18s; }
@@ -266,6 +260,7 @@ const QuestionCard = memo(({
 export default function App() {
   const [screen, setScreen] = useState<Screen>('upload');
   const [loading, setLoading] = useState(false);
+  const [compressing, setCompressing] = useState(false);
   const [errorUI, setErrorUI] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([{ msg: 'System initialized', kind: 'info' }]);
   
@@ -286,12 +281,10 @@ export default function App() {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll logs
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
 
   const endExam = useCallback(() => setScreen('results'), []);
 
-  // Timer Effect
   useEffect(() => {
     if (screen !== 'test') return;
     const interval = setInterval(() => {
@@ -305,24 +298,48 @@ export default function App() {
 
   const addLog = (msg: string, kind: LogEntry['kind'] = 'ok') => setLogs(prev => [...prev, { msg, kind }]);
 
-  // ── 4. File Input & PDF Size Limits ────────────────────────────────────────
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ── 4. File Input & PDF Compression ────────────────────────────────────────
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setErrorUI(null);
     const f = e.target.files?.[0];
-    if (f) {
-      // PRO: Faster PDF processing via size limit guard (approx max chars)
-      const MAX_SIZE_MB = 4;
-      if (f.size > MAX_SIZE_MB * 1024 * 1024) {
-        setErrorUI(`File is too large (${(f.size/1024/1024).toFixed(1)}MB). Please upload a PDF under ${MAX_SIZE_MB}MB to prevent AI timeouts.`);
-        return;
+    if (!f) return;
+
+    const sizeMB = f.size / 1024 / 1024;
+
+    if (sizeMB > 4) {
+      setCompressing(true);
+      setLogs([{ msg: `Large file detected (${sizeMB.toFixed(1)}MB). Initiating local compression...`, kind: 'info' }]);
+      
+      try {
+        const arrayBuffer = await f.arrayBuffer();
+        const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+        const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
+        const compressedFile = new File([pdfBytes], f.name, { type: 'application/pdf' });
+        const newSizeMB = compressedFile.size / 1024 / 1024;
+        
+        if (newSizeMB > 12) {
+          setErrorUI(`File is still too large (${newSizeMB.toFixed(1)}MB) after compression. Please use a smaller file under 12MB.`);
+          setFile(null);
+          setFileName('');
+        } else {
+          addLog(`✓ Compression complete. File optimized to ${newSizeMB.toFixed(1)}MB`, 'ok');
+          setFile(compressedFile);
+          setFileName(compressedFile.name);
+        }
+      } catch (err: any) {
+        console.error("Compression Error:", err);
+        setErrorUI(`Failed to compress PDF. Please use a smaller file under 4MB.`);
+        setFile(null);
+        setFileName('');
       }
+      setCompressing(false);
+    } else {
       setFile(f); 
       setFileName(f.name); 
     }
   };
 
   // ── 5. Generation API Call Logic ───────────────────────────────────────────
-  // PRO: Model Fallback Array
   const MODELS = [
     "gemini-2.5-flash",
     "gemini-2.0-flash", 
@@ -331,7 +348,6 @@ export default function App() {
   ];
 
   const callGemini = async (base64: string, key: string) => {
-    // PRO: Optimized strictly-formatted prompt for 3x faster generation
     const prompt = `Read this PDF. Extract up to 30 multiple-choice questions. 
 CRITICAL: Output ONLY a raw, minified JSON array. NO markdown, NO text, NO explanation.
 Format: [{"id":1,"question":"Text?","options":{"A":"Opt A","B":"Opt B"},"answer":"A"}]`;
@@ -351,7 +367,7 @@ Format: [{"id":1,"question":"Text?","options":{"A":"Opt A","B":"Opt B"},"answer"
         
         if (isQuotaError(data)) {
           addLog(`Model ${model} quota exceeded, switching...`, 'warn');
-          continue; // Try next model
+          continue;
         }
         if (data.error) throw new Error(data.error.message);
         
@@ -359,7 +375,6 @@ Format: [{"id":1,"question":"Text?","options":{"A":"Opt A","B":"Opt B"},"answer"
         return data.candidates[0].content.parts[0].text;
       } catch (err: any) {
         console.warn(`Model ${model} failed:`, err);
-        // Continue to the next model in the loop
       }
     }
     throw new Error("All fallback models failed or quota exceeded.");
@@ -383,7 +398,6 @@ Format: [{"id":1,"question":"Text?","options":{"A":"Opt A","B":"Opt B"},"answer"
         r.onerror = reject;
       });
 
-      // ── 6. Try/Catch Wrapping for Crash Prevention ───────────────────────
       const rawResponse = await callGemini(base64, apiKey.trim());
       addLog(`✓ Received AI response`, 'ok');
       addLog('Parsing MCQ JSON data...', 'info');
@@ -406,7 +420,6 @@ Format: [{"id":1,"question":"Text?","options":{"A":"Opt A","B":"Opt B"},"answer"
     }
   };
 
-  // AI Explanation using Fallback loop
   const fetchExplanation = async (q: Question) => {
     setLoadingExplanation(prev => ({ ...prev, [q.id]: true }));
     const key = apiKey.trim();
@@ -462,11 +475,9 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
     return `${h}:${m}:${sec}`;
   };
 
-  // ── Renders ────────────────────────────────────────────────────────────────
   const renderUpload = () => (
     <div className="upload-wrap">
-      {/* PRO: New Error UI Component */}
-      {errorUI && !loading && (
+      {errorUI && !loading && !compressing && (
         <div className="error-box">
           <FileWarning size={20} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }} />
           <div>
@@ -476,16 +487,17 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
         </div>
       )}
 
-      {loading || (errorUI && logs.length > 1) ? (
+      {loading || compressing || (errorUI && logs.length > 1) ? (
         <div className="loading-wrap">
-          {loading && (
+          {(loading || compressing) && (
             <>
               <div className="spinner-ring" />
-              <p className="shimmer-text">Analyzing Document…</p>
-              <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 4 }}>Optimized extraction active</p>
+              <p className="shimmer-text">{compressing ? 'Compressing PDF…' : 'Analyzing Document…'}</p>
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 4 }}>
+                {compressing ? 'Optimizing file structure locally' : 'Optimized extraction active'}
+              </p>
             </>
           )}
-          
           <div className="log-console">
             {logs.map((entry, i) => (
               <div key={i} className={`log-line ${entry.kind}`}>
@@ -495,8 +507,7 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
             ))}
             <div ref={logsEndRef} />
           </div>
-          
-          {!loading && (
+          {!loading && !compressing && (
             <button className="btn-primary" style={{ marginTop: 16 }} onClick={() => { setErrorUI(null); setLoading(false); }}>
               <RotateCcw size={13} style={{ display: 'inline', marginRight: 6 }} />Try Again
             </button>
@@ -507,7 +518,6 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
           <div className="upload-logo"><BookOpen size={30} color="var(--gold)" /></div>
           <h1 className="upload-title">MCQ Exam Simulator</h1>
           <p className="upload-sub">Upload a question-paper PDF to start your timed practice session</p>
-
           <div style={{ marginBottom: 16 }}>
             <div className="field-label"><Zap size={11} />Gemini API Key</div>
             <div className="key-wrap">
@@ -528,16 +538,14 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
               : <p className="field-hint" style={{ color: 'var(--green)' }}><CheckCircle size={11} />Key stored securely</p>
             }
           </div>
-
           <div className={`drop-zone${fileName ? ' active' : ''}`}>
             <input type="file" accept="application/pdf" onChange={handleFileChange} />
             <FileText size={22} color={fileName ? 'var(--gold)' : 'var(--muted)'} style={{ margin: '0 auto 8px', display: 'block' }} />
             <p className="drop-text">{fileName || 'Tap to choose a PDF'}</p>
-            {!fileName && <p className="drop-sub">Max 4MB supported</p>}
+            {!fileName && <p className="drop-sub">Auto-compresses files over 4MB</p>}
           </div>
-
-          <button className="btn-primary" onClick={startExtraction} disabled={!file || !apiKey.trim() || loading}>
-            {loading ? 'Processing...' : 'Start Extraction →'}
+          <button className="btn-primary" onClick={startExtraction} disabled={!file || !apiKey.trim() || loading || compressing}>
+            {loading ? 'Processing...' : compressing ? 'Compressing...' : 'Start Extraction →'}
           </button>
         </div>
       )}
@@ -546,20 +554,18 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
 
   const renderTest = () => {
     if (!questions.length) return null;
+    const q = questions[qIndex];
     const answered = Object.keys(selections).length;
     const visitedPct = ((qIndex + 1) / questions.length) * 100;
     const answeredPct = (answered / questions.length) * 100;
-    const isUrgent = clock < 300;
-
     return (
       <div className="test-layout">
         <div className="sidebar">
           <div className="s-card">
             <div className="timer-lbl"><Clock size={10} />Time Left</div>
-            <div className={`timer-val${isUrgent ? ' urgent' : ''}`}>{formatTime(clock)}</div>
+            <div className="timer-val">{formatTime(clock)}</div>
             {discoveredModel && <div className="model-badge"><Zap size={9} />{discoveredModel}</div>}
           </div>
-
           <div className="s-card">
             <div className="prog-lbl">Progress</div>
             <div className="prog-row">
@@ -573,13 +579,11 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
           </div>
           <button className="end-btn" onClick={endExam}><XCircle size={14} />End Test</button>
         </div>
-
-        {/* PRO: Using the optimized Memoized Question Component */}
         <QuestionCard 
-          q={questions[qIndex]} 
+          q={q} 
           qIndex={qIndex} 
           total={questions.length}
-          selection={selections[questions[qIndex].id]}
+          selection={selections[q.id]}
           onSelect={(id, opt) => setSelections(prev => ({ ...prev, [id]: opt }))}
           onPrev={() => setQIndex(Math.max(0, qIndex - 1))}
           onNext={() => setQIndex(qIndex + 1)}
@@ -597,14 +601,12 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
     });
     const wrong = questions.length - score - skipped;
     const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
-
     return (
       <div className="results-wrap">
         <div className="results-bar no-print">
           <button className="btn-ghost" onClick={restartApp}><RotateCcw size={14} />New Exam</button>
           <button className="btn-save" onClick={saveResults}><Download size={14} />Save PDF</button>
         </div>
-
         <div ref={resultsRef}>
           <div className="score-hero">
             <div className="score-pct">{pct}%</div>
@@ -615,7 +617,6 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
               <div className="stat-chip s"><span className="v">{skipped}</span> Skipped</div>
             </div>
           </div>
-
           <div className="review-list">
             {questions.map((q, i) => {
               const ok = selections[q.id] === q.answer;
@@ -635,7 +636,6 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
                       <div className="ans-val" style={{ color: 'var(--green)' }}>{q.answer}. {q.options[q.answer]}</div>
                     </div>
                   </div>
-
                   {aiExplanations[q.id] ? (
                     <div className="ai-box">
                       <div className="ai-box-title"><Zap size={10} />AI Explanation</div>
@@ -663,5 +663,4 @@ Correct: ${q.answer}. ${q.options[q.answer]}`;
     </div>
   );
 }
-
 
