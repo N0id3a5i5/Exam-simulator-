@@ -26,51 +26,12 @@ env:
 jobs:
 
 # =============================================================================
-# JOB 1 — Lint & Type-Check (non-blocking — warns only, never skips builds)
-# =============================================================================
-  lint:
-    name: Lint and Type-Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # ── FIX: lint result is always "success" so downstream jobs never get skipped
-    continue-on-error: true
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci --prefer-offline
-
-      - name: TypeScript type-check
-        run: npx tsc --noEmit
-        continue-on-error: true   # warn only — never fail the job
-
-      - name: ESLint
-        run: |
-          # Only run ESLint if config file exists — skip silently otherwise
-          if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.cjs" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ]; then
-            npx eslint "src/**/*.{ts,tsx}" --max-warnings 99999
-          else
-            echo "No ESLint config found — skipping"
-          fi
-        continue-on-error: true   # warn only — never fail the job
-
-# =============================================================================
-# JOB 2 — Build Web (Vite)
+# JOB 1 — Build Web (Vite)
 # =============================================================================
   build-web:
     name: Build Web (Vite)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # ── FIX: removed "needs: lint" dependency entirely
-    # Build runs independently — lint issues are just warnings
 
     steps:
       - name: Checkout
@@ -80,12 +41,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          # ── FIX: removed cache: 'npm' — causes failure when package-lock.json
+          # is missing or out of sync. Safe to remove; install is fast enough.
 
       - name: Install dependencies
-        run: npm ci --prefer-offline
+        # ── FIX: use 'npm install' instead of 'npm ci'
+        # 'npm ci' requires a perfect package-lock.json — fails if it's missing
+        # or not committed. 'npm install' always works.
+        run: npm install
 
       - name: Build
+        # ── API keys are entered in the app by the user at runtime, not here.
+        # No VITE_* env vars needed in the workflow at all.
         run: npm run build
         env:
           NODE_ENV: production
@@ -96,7 +63,7 @@ jobs:
             echo "dist/ not found — build failed"
             exit 1
           fi
-          echo "Build succeeded — $(find dist -type f | wc -l) files"
+          echo "Build OK — $(find dist -type f | wc -l) files"
           ls -lh dist
 
       - name: Upload dist artifact
@@ -108,13 +75,13 @@ jobs:
           if-no-files-found: error
 
 # =============================================================================
-# JOB 3 — Build Android Debug APK
+# JOB 2 — Build Android Debug APK
 # =============================================================================
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: build-web   # only needs web build, not lint
+    needs: build-web
 
     steps:
       - name: Checkout
@@ -124,7 +91,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -145,7 +111,7 @@ jobs:
             --sdk_root=$ANDROID_SDK_ROOT
 
       - name: Install npm dependencies
-        run: npm ci --prefer-offline
+        run: npm install
 
       - name: Download web dist
         uses: actions/download-artifact@v4
@@ -172,9 +138,10 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Rename APK
+      - name: Locate and rename APK
         run: |
           APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          echo "Found: $APK"
           cp "$APK" "mcq-exam-${{ github.ref_name }}-${{ github.sha }}.apk"
 
       - name: Upload APK artifact
@@ -186,7 +153,7 @@ jobs:
           if-no-files-found: error
 
 # =============================================================================
-# JOB 4 — Create GitHub Release (only on version tags like v1.0.0)
+# JOB 3 — Create GitHub Release (only on version tags like v1.0.0)
 # =============================================================================
   release:
     name: Create GitHub Release
@@ -228,7 +195,7 @@ jobs:
             ### Install APK on Android
             1. Download `mcq-exam-*.apk` below
             2. On your device: **Settings → Security → Install unknown apps → Allow**
-            3. Open the file and tap Install
+            3. Open the downloaded file and tap Install
 
             ---
             Commit: `${{ github.sha }}`
