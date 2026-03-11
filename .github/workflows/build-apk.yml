@@ -44,15 +44,15 @@ jobs:
         run: |
           mkdir -p android/app/src/main/res/xml
           cat > android/app/src/main/res/xml/network_security_config.xml << 'XML'
-<?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-    <base-config cleartextTrafficPermitted="true">
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </base-config>
-</network-security-config>
-XML
+          <?xml version="1.0" encoding="utf-8"?>
+          <network-security-config>
+              <base-config cleartextTrafficPermitted="true">
+                  <trust-anchors>
+                      <certificates src="system" />
+                  </trust-anchors>
+              </base-config>
+          </network-security-config>
+          XML
 
       - name: Patch AndroidManifest with Python
         run: |
@@ -98,3 +98,4 @@ XML
           name: MCQ-Exam-Simulator
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
+          
