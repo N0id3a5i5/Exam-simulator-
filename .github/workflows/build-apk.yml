@@ -31,8 +31,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install pdfjs-dist (required for bundled PDF parsing — no CDN)
-        run: npm install pdfjs-dist
+      - name: Install pdfjs-dist, Capacitor core and SQLite plugin
+        run: npm install pdfjs-dist @capacitor/core @capacitor-community/sqlite
 
       - name: Build web app
         run: npm run build
@@ -59,10 +59,67 @@ jobs:
             }
           }
           EOF
+      - name: Register SQLite plugin in MainActivity
+        run: |
+          python3 << 'PYEOF2'
+          import re, os
+          path = "android/app/src/main/java/com/mcqexam/app/MainActivity.java"
+          if not os.path.exists(path):
+            print("MainActivity not found yet — will patch after cap add android")
+            exit(0)
+          with open(path) as f:
+            code = f.read()
+          if "CapacitorSQLite" not in code:
+            code = code.replace(
+              "import com.getcapacitor.BridgeActivity;",
+              "import com.getcapacitor.BridgeActivity;\nimport com.getcapacitor.community.database.sqlite.CapacitorSQLite;"
+            )
+            code = re.sub(
+              r'(public class MainActivity extends BridgeActivity \{)',
+              r'\1\n  @Override\n  public void onCreate(Bundle savedInstanceState) {\n    registerPlugin(CapacitorSQLite.class);\n    super.onCreate(savedInstanceState);\n  }',
+              code
+            )
+            with open(path, "w") as f:
+              f.write(code)
+            print("MainActivity patched with SQLite plugin")
+          PYEOF2
+
       - name: Init & add Android platform
         run: |
           npx cap add android || true
           npx cap sync android
+      - name: Register SQLite plugin in MainActivity (post cap add)
+        run: |
+          python3 << 'PYEOF3'
+          import re, glob
+          matches = glob.glob("android/app/src/main/java/**/MainActivity.java", recursive=True)
+          if not matches:
+            print("MainActivity not found")
+            exit(0)
+          path = matches[0]
+          with open(path) as f:
+            code = f.read()
+          if "CapacitorSQLite" in code:
+            print("Already patched")
+            exit(0)
+          # Add import
+          code = code.replace(
+            "import com.getcapacitor.BridgeActivity;",
+            "import android.os.Bundle;\nimport com.getcapacitor.BridgeActivity;\nimport com.getcapacitor.community.database.sqlite.CapacitorSQLite;"
+          )
+          # Register plugin in onCreate
+          if "registerPlugin" not in code:
+            code = re.sub(
+              r'(public class MainActivity extends BridgeActivity\s*\{)',
+              r'\1\n  @Override\n  public void onCreate(Bundle savedInstanceState) {\n    registerPlugin(CapacitorSQLite.class);\n    super.onCreate(savedInstanceState);\n  }',
+              code
+            )
+          with open(path, "w") as f:
+            f.write(code)
+          print("Patched:", path)
+          print(open(path).read())
+          PYEOF3
+
       - name: Write network security config
         run: |
           mkdir -p android/app/src/main/res/xml
@@ -116,3 +173,4 @@ jobs:
           name: MCQ-Exam-Simulator
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
+          
